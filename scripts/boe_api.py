@@ -155,6 +155,41 @@ def limpiar(texto: str | None) -> str:
     return re.sub(r"\s+", " ", texto or "").strip()
 
 
+def texto_articulo_manifiestamente_incompleto(
+    texto: str | None,
+    titulo_bloque: str | None = None,
+) -> bool:
+    """Detecta corpus manifiestamente incompleto sin usar umbrales de longitud."""
+    limpio = limpiar(texto)
+    if not limpio:
+        return True
+
+    normal = normalizar(limpio).rstrip(" .:;-")
+    titulo = normalizar(titulo_bloque).rstrip(" .:;-")
+
+    # Caso inequívoco: el supuesto texto del artículo es solo su título/rúbrica.
+    if titulo and normal == titulo:
+        return True
+
+    # Caso inequívoco: solo "Artículo N" sin rúbrica ni cuerpo.
+    return bool(
+        re.fullmatch(
+            r"(?:articulo|art\.?)\s+"
+            r"\d+(?:\.\d+)*(?:\s*(?:bis|ter|quater|quinquies))?"
+            r"(?:\.[a-z])?\s*\.?",
+            normal,
+            flags=re.I,
+        )
+    )
+
+
+def texto_articulo_suficiente(
+    texto: str | None,
+    titulo_bloque: str | None = None,
+) -> bool:
+    return not texto_articulo_manifiestamente_incompleto(texto, titulo_bloque)
+
+
 def nombre_etiqueta(elemento: ET.Element) -> str:
     return elemento.tag.rsplit("}", 1)[-1].lower()
 
@@ -933,10 +968,14 @@ def extraer_articulo_desde_html(
         rf"(?=\.|\s|$)\.?\s*(.*)$"
     )
     patron_siguiente = re.compile(
-        r"(?im)^(?:art[ií]culo|art\.?)\s*"
+        r"(?im)^(?:"
+        r"(?:art[ií]culo|art\.?)\s*"
         r"(?:\d+(?:\.\d+)*(?:\s+(?:bis|ter|quater|quinquies|"
         r"sexies|septies|octies|nonies|decies))?|[uú]nico)"
         r"(?=\.|\s|$)"
+        r"|disposici[oó]n\s+(?:adicional|transitoria|derogatoria|final)\b"
+        r"|anexo(?:\s+[ivxlcdm]+|\s+\d+)?\b"
+        r")"
     )
 
     candidatos: list[tuple[str, str, str]] = []
@@ -958,11 +997,21 @@ def extraer_articulo_desde_html(
                 titulo += f". {resto_titulo}"
             candidatos.append((f"a{articulo_base}", titulo, cuerpo))
 
-    if not candidatos:
+    # El documento original incluye al principio un índice que repite los
+    # encabezados de los artículos. Esos candidatos contienen solo la rúbrica
+    # y no pueden considerarse corpus. Se descartan antes de elegir el bloque.
+    candidatos_suficientes = [
+        item for item in candidatos
+        if texto_articulo_suficiente(item[2], item[1])
+    ]
+
+    if not candidatos_suficientes:
         return None
 
-    candidatos.sort(key=lambda item: (len(item[2]) < 25, len(item[2])))
-    return candidatos[0]
+    # Si aparecen varias coincidencias suficientes, se prefiere la más corta:
+    # evita capturar accidentalmente texto posterior al artículo solicitado.
+    candidatos_suficientes.sort(key=lambda item: len(item[2]))
+    return candidatos_suficientes[0]
 
 
 def normalizar_numero_articulo(articulo: str) -> str:
@@ -1047,15 +1096,30 @@ def _datos_bloque_indice(elemento: ET.Element) -> tuple[str, str, str] | None:
 
 
 def _titulo_corresponde_articulo(titulo: str, articulo_base: str) -> bool:
+    """Comprueba el artículo exacto aunque el título incluya su rúbrica."""
     titulo_n = normalizar(titulo).strip(" .")
-    for variante in variantes_encabezado_articulo(articulo_base):
+    variantes = {
+        normalizar(variante).strip(" .")
+        for variante in variantes_encabezado_articulo(articulo_base)
+    }
+
+    # Conserva la compatibilidad con títulos sin rúbrica, incluidos números
+    # expresados en letras cuando BOE los utiliza.
+    for variante in variantes:
         if re.fullmatch(
             rf"(?:articulo|art\.?)\s*{re.escape(variante)}",
             titulo_n,
             flags=re.I | re.U,
         ):
             return True
-    return False
+
+    # En el índice BOE algunos bloques incorporan también la rúbrica:
+    # "Artículo 178. Coordinación...". Se extrae el número exacto para no
+    # confundir, por ejemplo, 17 con 178.
+    numero, _ = encabezado_articulo(titulo)
+    if not numero:
+        return False
+    return normalizar(numero).strip(" .") in variantes
 
 
 def _versiones_bloque(raiz: ET.Element) -> list[ET.Element]:
@@ -1147,9 +1211,23 @@ def obtener_articulo(nombre_norma: str, articulo: str) -> ArticuloBOE:
             candidatos.append((id_bloque, titulo, fecha_actualizacion))
 
     if not candidatos:
+        respaldo_html = extraer_articulo_desde_html(norma.id_boe, base)
+        if respaldo_html is not None:
+            id_bloque, titulo, contenido = respaldo_html
+            if texto_articulo_suficiente(contenido, titulo):
+                return ArticuloBOE(
+                    nombre_norma=nombre_norma,
+                    id_boe=norma.id_boe,
+                    departamento=norma.departamento,
+                    articulo=solicitado,
+                    id_bloque=id_bloque,
+                    titulo_bloque=titulo,
+                    texto=contenido,
+                )
         raise BOEError(
             f"El índice consolidado de {norma.id_boe} no contiene "
-            f"el artículo {solicitado}."
+            f"el artículo {solicitado} y el respaldo HTML tampoco "
+            "permitió recuperar un texto normativo suficiente."
         )
 
     resueltos: list[tuple[str, str, str, str]] = []
@@ -1162,9 +1240,18 @@ def obtener_articulo(nombre_norma: str, articulo: str) -> ArticuloBOE:
                 raiz_bloque, fecha_actualizacion
             )
             contenido = _texto_version(version)
-            if not contenido:
+            if not texto_articulo_suficiente(contenido, titulo):
+                respaldo_html = extraer_articulo_desde_html(norma.id_boe, base)
+                if respaldo_html is not None:
+                    id_html, titulo_html, contenido_html = respaldo_html
+                    if texto_articulo_suficiente(contenido_html, titulo_html):
+                        id_bloque = id_html
+                        titulo = titulo_html
+                        contenido = contenido_html
+            if not texto_articulo_suficiente(contenido, titulo):
                 raise BOEError(
-                    "La versión seleccionada no contiene texto normativo."
+                    "El artículo recuperado no contiene cuerpo normativo; "
+                    "solo se obtuvo el título/rúbrica o texto vacío."
                 )
             resueltos.append(
                 (id_bloque, titulo, fecha_actualizacion, contenido)

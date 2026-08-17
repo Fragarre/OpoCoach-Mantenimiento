@@ -523,7 +523,10 @@ def main() -> None:
                 articulos_incompletos = [
                     fila
                     for fila in todos_articulos_texto
-                    if not texto_articulo_suficiente(fila.get("texto"))
+                    if not texto_articulo_suficiente(
+                        fila.get("texto"),
+                        fila.get("titulo_bloque"),
+                    )
                 ]
                 guardar_csv(
                     carpeta / "articulos_texto_incompleto.csv",

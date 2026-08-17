@@ -51,6 +51,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterable
 
+from boe_api import texto_articulo_suficiente
+
 
 RAIZ = Path(__file__).resolve().parent.parent
 DB_PREDETERMINADA = RAIZ / "db" / "oposiciones.sqlite3"
@@ -430,7 +432,7 @@ def auditar_convocatoria(
             )
         ]
 
-        articulos_vacios = [
+        articulos_enlazados = [
             dict(fila)
             for fila in conexion.execute(
                 """
@@ -447,13 +449,15 @@ def auditar_convocatoria(
                 JOIN articulos_fuente AS af
                   ON af.id = tr.articulo_fuente_id
                 WHERE tt.temario_id = ?
-                  AND (
-                      af.texto IS NULL
-                      OR TRIM(af.texto) = ''
-                  )
                 ORDER BY af.id
                 """,
                 (temario_id,),
+            )
+        ]
+        articulos_vacios = [
+            fila for fila in articulos_enlazados
+            if not texto_articulo_suficiente(
+                fila.get("texto"), fila.get("titulo_bloque")
             )
         ]
 

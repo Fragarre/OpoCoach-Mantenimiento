@@ -241,7 +241,8 @@ def cargar_referencias(
             r.nombre_norma_normalizada,
             r.articulo_solicitado,
             r.estado,
-            af.texto AS texto_fuente_actual
+            af.texto AS texto_fuente_actual,
+            af.titulo_bloque AS titulo_fuente_actual
         FROM temario_referencias AS r
         LEFT JOIN articulos_fuente AS af
           ON af.id = r.articulo_fuente_id
@@ -257,7 +258,9 @@ def cargar_referencias(
     if reparar_textos_incompletos:
         filas = [
             fila for fila in filas
-            if not texto_articulo_suficiente(fila["texto_fuente_actual"])
+            if not texto_articulo_suficiente(
+                fila["texto_fuente_actual"], fila["titulo_fuente_actual"]
+            )
         ]
 
     if limite is not None:
@@ -510,6 +513,12 @@ def resolver_una(
                 referencia.articulo_solicitado,
             )
 
+        if not texto_articulo_suficiente(articulo.texto, articulo.titulo_bloque):
+            raise BOEError(
+                "El artículo recuperado no contiene cuerpo normativo completo; "
+                "solo se obtuvo el título/rúbrica o texto vacío."
+            )
+
         return ResultadoResolucion(
             articulo=articulo,
             estado=ESTADO_COMPLETADO,
@@ -576,7 +585,7 @@ def limpiar_articulos_huerfanos_incompletos(ruta_db: Path, sin_copia_seguridad: 
 
         filas = conexion.execute(
             """
-            SELECT af.id, af.id_boe, af.id_bloque, af.articulo_boe, af.texto
+            SELECT af.id, af.id_boe, af.id_bloque, af.articulo_boe, af.titulo_bloque, af.texto
             FROM articulos_fuente AS af
             LEFT JOIN temario_referencias AS tr
               ON tr.articulo_fuente_id = af.id
@@ -590,7 +599,7 @@ def limpiar_articulos_huerfanos_incompletos(ruta_db: Path, sin_copia_seguridad: 
 
         candidatos = [
             fila for fila in filas
-            if not texto_articulo_suficiente(fila["texto"])
+            if not texto_articulo_suficiente(fila["texto"], fila["titulo_bloque"])
         ]
 
         print("LIMPIEZA DE ARTÍCULOS FUENTE HUÉRFANOS E INCOMPLETOS")
