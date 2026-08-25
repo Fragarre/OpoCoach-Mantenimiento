@@ -1501,6 +1501,17 @@ def main() -> None:
         )
         convocatoria_id = int(convocatoria["id"])
 
+        columnas_conv = columnas_tabla(conexion, "convocatorias")
+        if (
+            args.guardar
+            and "activa" in columnas_conv
+            and int(convocatoria["activa"] or 0) != 1
+        ):
+            raise RuntimeError(
+                "La convocatoria está dada de baja. No se puede modificar su banco. "
+                "Reactívela primero desde el menú de convocatorias."
+            )
+
         temario = buscar_temario(
             conexion,
             convocatoria_id,

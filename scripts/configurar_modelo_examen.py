@@ -163,6 +163,15 @@ def pedir_entero(mensaje: str, minimo: int = 1, maximo: int | None = None) -> in
 
 
 def obtener_convocatorias(con: sqlite3.Connection) -> list[sqlite3.Row]:
+    columnas = {
+        str(r["name"])
+        for r in con.execute("PRAGMA table_info(convocatorias)")
+    }
+    if "activa" in columnas:
+        return con.execute(
+            "SELECT id, codigo, puesto, numero_preguntas "
+            "FROM convocatorias WHERE activa = 1 ORDER BY id"
+        ).fetchall()
     return con.execute(
         "SELECT id, codigo, puesto, numero_preguntas FROM convocatorias ORDER BY id"
     ).fetchall()

@@ -63,9 +63,18 @@ def main() -> int:
         print(f"integrity_check....................... {con.execute('PRAGMA integrity_check').fetchone()[0]}")
         print(f"foreign_key_check..................... {len(con.execute('PRAGMA foreign_key_check').fetchall())}")
 
-        convocatorias = con.execute(
-            "SELECT id, codigo FROM convocatorias ORDER BY id"
-        ).fetchall()
+        columnas_conv = {
+            str(r[1])
+            for r in con.execute("PRAGMA table_info(convocatorias)").fetchall()
+        }
+        if "activa" in columnas_conv:
+            convocatorias = con.execute(
+                "SELECT id, codigo FROM convocatorias WHERE activa = 1 ORDER BY id"
+            ).fetchall()
+        else:
+            convocatorias = con.execute(
+                "SELECT id, codigo FROM convocatorias ORDER BY id"
+            ).fetchall()
 
         total_incidencias = 0
         for conv in convocatorias:

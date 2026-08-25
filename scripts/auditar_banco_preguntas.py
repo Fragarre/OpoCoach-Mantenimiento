@@ -83,9 +83,18 @@ def main() -> None:
         conexion.execute("PRAGMA query_only = ON")
         conexion.execute("PRAGMA foreign_keys = ON")
 
-        convocatorias = conexion.execute(
-            "SELECT id FROM convocatorias ORDER BY id"
-        ).fetchall()
+        columnas_conv = {
+            str(r["name"])
+            for r in conexion.execute("PRAGMA table_info(convocatorias)")
+        }
+        if "activa" in columnas_conv:
+            convocatorias = conexion.execute(
+                "SELECT id FROM convocatorias WHERE activa = 1 ORDER BY id"
+            ).fetchall()
+        else:
+            convocatorias = conexion.execute(
+                "SELECT id FROM convocatorias ORDER BY id"
+            ).fetchall()
 
         if argumentos.convocatoria_id is None:
             if len(convocatorias) != 1:

@@ -9,7 +9,7 @@ Contrato entre procesos:
 - este sincronizador lee ese JSON y NO interpreta textos de consola.
 
 Proceso:
-1. Ejecuta el constructor en SOLO REVISIÓN para todas las convocatorias.
+1. Ejecuta el constructor en SOLO REVISIÓN para todas las convocatorias activas.
 2. Si alguna revisión falla o presenta bloqueos/incidencias, no modifica ningún banco.
 3. Con --aplicar, ejecuta --guardar solo para convocatorias con novedades.
 4. Ejecuta validacion_completa.py al terminar.
@@ -73,9 +73,18 @@ def _ejecutar(comando: list[str]) -> tuple[int, str]:
 def _convocatorias(db: Path) -> list[tuple[int, str]]:
     uri = f"file:{db.resolve().as_posix()}?mode=ro"
     with sqlite3.connect(uri, uri=True) as con:
-        filas = con.execute(
-            "SELECT id, codigo FROM convocatorias ORDER BY id"
-        ).fetchall()
+        columnas = {
+            str(r[1])
+            for r in con.execute("PRAGMA table_info(convocatorias)").fetchall()
+        }
+        if "activa" in columnas:
+            filas = con.execute(
+                "SELECT id, codigo FROM convocatorias WHERE activa = 1 ORDER BY id"
+            ).fetchall()
+        else:
+            filas = con.execute(
+                "SELECT id, codigo FROM convocatorias ORDER BY id"
+            ).fetchall()
     return [(int(i), str(c)) for i, c in filas]
 
 
@@ -232,7 +241,7 @@ def sincronizar_todos_bancos(
     print("SINCRONIZACIÓN COMÚN DE BANCOS")
     print("=" * 78)
     print(f"Base: {db}")
-    print("Fase 1: revisión de TODAS las convocatorias")
+    print("Fase 1: revisión de TODAS las convocatorias activas")
     print()
 
     revisiones: list[RevisionBanco] = []

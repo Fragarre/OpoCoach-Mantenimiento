@@ -418,10 +418,27 @@ def guardar_convocatoria(
         conexion.execute("PRAGMA foreign_keys = ON")
         comprobar_esquema(conexion)
 
-        existente = conexion.execute(
-            "SELECT id FROM convocatorias WHERE codigo = ?",
-            (convocatoria["codigo"],),
-        ).fetchone()
+        columnas_conv = {
+            str(fila[1])
+            for fila in conexion.execute("PRAGMA table_info(convocatorias)").fetchall()
+        }
+        if "activa" in columnas_conv:
+            existente = conexion.execute(
+                "SELECT id, activa FROM convocatorias WHERE codigo = ?",
+                (convocatoria["codigo"],),
+            ).fetchone()
+        else:
+            existente = conexion.execute(
+                "SELECT id, 1 AS activa FROM convocatorias WHERE codigo = ?",
+                (convocatoria["codigo"],),
+            ).fetchone()
+
+        if existente is not None and int(existente[1] or 0) != 1:
+            raise RuntimeError(
+                "Ya existe una convocatoria INACTIVA con el código "
+                f"{convocatoria['codigo']}. Reactívela primero desde el menú; "
+                "el alta no reactiva convocatorias de forma implícita."
+            )
 
         if existente is not None and not actualizar_existente:
             raise RuntimeError(

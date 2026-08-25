@@ -461,6 +461,59 @@ def alta_convocatoria() -> None:
     pausa()
 
 
+def gestionar_estado_convocatoria_menu() -> None:
+    cabecera_submenu(
+        "BAJA / REACTIVAR CONVOCATORIA",
+        "La baja es lógica: oculta la convocatoria de los procesos operativos y "
+        "elimina únicamente sus vínculos de banco. Conserva temario, configuración "
+        "histórica, lote de preguntas y corpus normativo/RAG.",
+    )
+
+    if ejecutar_script("gestionar_estado_convocatoria.py", "--listar") != 0:
+        pausa()
+        return
+
+    cid = pedir_texto("ID de convocatoria: ")
+    if not cid.isdigit() or int(cid) <= 0:
+        print("ID no válido.")
+        pausa()
+        return
+
+    print("\nOperación")
+    print("1. Dar de baja")
+    print("2. Reactivar")
+    print("0. Cancelar")
+    op = input("Opción: ").strip()
+    if op == "0":
+        return
+    if op not in {"1", "2"}:
+        print("Opción no válida.")
+        pausa()
+        return
+
+    accion = "--baja" if op == "1" else "--reactivar"
+    args = ["--convocatoria-id", cid, accion]
+
+    print("\nPrimero se ejecutará una vista previa de solo lectura.")
+    if ejecutar_script("gestionar_estado_convocatoria.py", *args) != 0:
+        pausa()
+        return
+
+    texto = (
+        "¿Aplicar la BAJA? Se creará backup y se eliminarán solo los vínculos del banco"
+        if op == "1"
+        else "¿Reactivar la convocatoria? Se creará backup"
+    )
+    if pedir_si_no(texto):
+        if ejecutar_script("gestionar_estado_convocatoria.py", *args, "--aplicar") == 0:
+            if op == "2":
+                print(
+                    "\nLa convocatoria está activa de nuevo. "
+                    "Ejecute después 'Sincronizar todos los bancos' y la validación completa."
+                )
+    pausa()
+
+
 def construir_corpus() -> None:
     cabecera_submenu(
         "CONSTRUIR CORPUS DE CONVOCATORIA",
@@ -1087,7 +1140,7 @@ def actualizar_publicacion_supabase_menu() -> None:
 def validacion_completa() -> None:
     print(
         "\nSe ejecutará una validación completa de solo lectura: integridad SQLite, "
-        "constructores de banco en modo revisión para todas las convocatorias, "
+        "constructores de banco en modo revisión para todas las convocatorias activas, "
         "auditoría independiente de selección y auditoría general de la base."
     )
     print("\nLa validación no guarda bancos ni modifica ninguna tabla.")
@@ -1754,7 +1807,7 @@ def sincronizar_todos_bancos_menu() -> None:
     cabecera_submenu(
         "SINCRONIZAR TODOS LOS BANCOS",
         "Usa mantener_banco_preguntas.py como única fuente de reglas. "
-        "Primero revisa TODAS las convocatorias; solo después permite aplicar.",
+        "Primero revisa TODAS las convocatorias activas; solo después permite aplicar.",
     )
     if ejecutar_script("sincronizar_bancos.py") != 0:
         pausa()
@@ -1864,26 +1917,28 @@ def submenu_convocatorias() -> None:
         )
         print("1. Extraer temario desde PDF                          [CREA CSV]")
         print("2. Alta de convocatoria y temario                     [VALIDA → ESCRIBE]")
-        print("3. Importar/sincronizar temario.csv existente         [AVANZADO]")
-        print("4. Construir/validar corpus IA + RAG de convocatoria   [BOE + DOGV + DOUE]")
-        print("5. Resolver/reparar referencias BOE                   [AVANZADO]")
-        print("6. Auditar corpus jurídico                            [SOLO LECTURA]")
-        print("7. Configurar modelo de examen                        [ESCRIBE · BACKUP]")
-        print("8. Localizar norma / índice / alcance BOE             [CONSULTA WEB]")
-        print("9. Consultar artículo consolidado BOE                 [CONSULTA WEB]")
-        print("10. Mantener corpus normativo del Chat                 [BOE + DOGV + DOUE]")
-        print("11. Configurar reglas de partes                        [ESCRIBE · BACKUP]")
+        print("3. Baja / reactivar convocatoria                      [VALIDA → BACKUP/APLICA]")
+        print("4. Importar/sincronizar temario.csv existente         [AVANZADO]")
+        print("5. Construir/validar corpus IA + RAG de convocatoria   [BOE + DOGV + DOUE]")
+        print("6. Resolver/reparar referencias BOE                   [AVANZADO]")
+        print("7. Auditar corpus jurídico                            [SOLO LECTURA]")
+        print("8. Configurar modelo de examen                        [ESCRIBE · BACKUP]")
+        print("9. Localizar norma / índice / alcance BOE             [CONSULTA WEB]")
+        print("10. Consultar artículo consolidado BOE                [CONSULTA WEB]")
+        print("11. Mantener corpus normativo del Chat                [BOE + DOGV + DOUE]")
+        print("12. Configurar reglas de partes                       [ESCRIBE · BACKUP]")
         print("0. Volver")
         op=input("Opción: ").strip()
         if op=="0": return
         acciones={
             "1":extraer_temario_convocatoria, "2":alta_convocatoria,
-            "3":importar_temario_manual, "4":construir_corpus,
-            "5":resolver_referencias_boe_menu, "6":auditar_corpus_temario_menu,
-            "7":configurar_modelo_examen_menu, "8":localizador_normativa_menu,
-            "9":consultar_articulo_boe_menu,
-            "10":mantener_corpus_chat_menu,
-            "11":configurar_reglas_partes_menu,
+            "3":gestionar_estado_convocatoria_menu,
+            "4":importar_temario_manual, "5":construir_corpus,
+            "6":resolver_referencias_boe_menu, "7":auditar_corpus_temario_menu,
+            "8":configurar_modelo_examen_menu, "9":localizador_normativa_menu,
+            "10":consultar_articulo_boe_menu,
+            "11":mantener_corpus_chat_menu,
+            "12":configurar_reglas_partes_menu,
         }
         fn=acciones.get(op)
         if fn: fn()

@@ -37,6 +37,7 @@ TABLAS_ORDEN = [
 
 COLUMNAS_BOOLEANAS = {
     ("convocatorias", "tiene_partes"),
+    ("convocatorias", "activa"),
     ("banco_preguntas_temas", "es_principal"),
 }
 
@@ -216,6 +217,34 @@ def validar_tablas_destino(conn: psycopg.Connection) -> None:
         raise RuntimeError(
             "Faltan tablas en Supabase: " + ", ".join(faltantes)
         )
+
+
+def asegurar_columna_activa_destino(
+    con_sqlite: sqlite3.Connection,
+    conn_pg: psycopg.Connection,
+) -> None:
+    """Migra contenidos.convocatorias.activa solo si el snapshot ya la contiene."""
+    if "activa" not in columnas_sqlite(con_sqlite, "convocatorias"):
+        return
+
+    with conn_pg.cursor() as cur:
+        cur.execute(
+            """
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = %s
+              AND table_name = 'convocatorias'
+              AND column_name = 'activa'
+            """,
+            (ESQUEMA_DESTINO,),
+        )
+        if cur.fetchone() is None:
+            cur.execute(
+                sql.SQL(
+                    "ALTER TABLE {}.convocatorias "
+                    "ADD COLUMN activa boolean NOT NULL DEFAULT true"
+                ).format(sql.Identifier(ESQUEMA_DESTINO))
+            )
 
 
 def validar_columnas_destino(
@@ -416,6 +445,7 @@ def actualizar(
 
         with psycopg.connect(database_url()) as conn:
             validar_tablas_destino(conn)
+            asegurar_columna_activa_destino(con_sqlite, conn)
             validar_columnas_destino(con_sqlite, conn)
             antes = recuentos_postgres(conn)
 

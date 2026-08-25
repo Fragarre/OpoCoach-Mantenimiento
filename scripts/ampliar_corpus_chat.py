@@ -824,7 +824,12 @@ def ejecutar(args: argparse.Namespace) -> int:
             if id_boe in DATOS_IDS_VERIFICADOS:
                 resumen["sin_indice"] += 1
                 resumen["guardados"] += int(fila["filas"])
-                print("  Estado: EXCLUIDO_SIN_INDICE_CONSOLIDADO")
+                resumen["errores"] += 1
+                print("  Estado: SIN_INDICE_CONSOLIDADO")
+                print(
+                    "  El proveedor BOE no puede verificar la norma completa; "
+                    "se requiere fallback PDF local."
+                )
                 continue
 
             try:
@@ -889,7 +894,7 @@ def ejecutar(args: argparse.Namespace) -> int:
     print(f"AMPLIABLE:                              {resumen['ampliables']}")
     print(f"REVISAR:                                {resumen['revisar']}")
     print(f"NO_AMPLIABLE:                           {resumen['no_ampliables']}")
-    print(f"EXCLUIDO_SIN_INDICE_CONSOLIDADO:        {resumen['sin_indice']}")
+    print(f"SIN_INDICE_CONSOLIDADO_REQUIERE_FALLBACK: {resumen['sin_indice']}")
     print(f"Errores de consulta:                    {resumen['errores']}")
     print(f"Artículos realmente faltantes:          {resumen['faltantes']}")
     print(f"Textos recuperados y validados:         {len(plan)}")
